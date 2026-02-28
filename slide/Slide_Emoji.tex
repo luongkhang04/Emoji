@@ -1,0 +1,303 @@
+\documentclass[t, aspectratio=169]{beamer}
+
+\usepackage[utf8]{vietnam}
+\usepackage{amsmath,amssymb}
+\usepackage{lmodern}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{graphicx}
+\usepackage{animate}
+
+% --- LAYOUT CONFIG (adjust these if content overflows) ---
+\def\slideContentLeftMargin{0.5cm}
+\def\slideContentRightMargin{1cm}
+\def\hustHeaderHeight{1cm}
+\def\slideContentBotMargin{3.5cm}
+
+\usepackage[red, 169]{beamerthemeHUST}
+
+% Support compiling from either repo root or the slide/ directory.
+% - Template assets live in slide/images/
+% - Report figures live in report/images/
+\graphicspath{{images/}{slide/images/}{../report/images/}{report/images/}}
+
+% Title page alignment (match the template's "left-aligned" style)
+\renewcommand{\titlePageTitleX}{-0.5cm}
+\renewcommand{\titlePageTitleY}{-0.5cm}
+\renewcommand{\hustTitleAlign}{\alignLeft}
+\renewcommand{\hustSubtitleAlign}{\alignLeft}
+\renewcommand{\hustAuthorAlign}{\alignLeft}
+\renewcommand{\hustInstAlign}{\alignLeft}
+
+\title{Emoji Prediction on Social Media}
+\subtitle{Single-label emoji ranking from tweet-style text}
+\author{\texorpdfstring{Lương Thái Khang --- 20224866}{Lương Thái Khang (20224866)}}
+\institute{School of Information and Communication Technology (SOICT)\\Hanoi University of Science and Technology\\Supervisor: Dr.~Nguyễn Bá Ngọc}
+\date{January 2026}
+
+% Section divider slides look nicer without affecting page numbers.
+\newcommand{\hustsectionpagenonum}[1]{
+	{
+		\setbeamertemplate{background}{\includegraphics[width=\paperwidth,height=\paperheight]{\hustbg{section}}}
+		\begin{frame}[plain,noframenumbering]
+			\begin{tikzpicture}[remember picture, overlay]
+				\node[anchor=center] at (current page.center) {\Huge \textcolor{white}{\textbf{#1}}};
+			\end{tikzpicture}
+		\end{frame}
+	}
+}
+
+\AtBeginSection{
+	\hustsectionpagenonum{\insertsection}
+}
+
+\begin{document}
+	
+	\hustintropage{Emoji Prediction}
+	
+	% Cover slide
+	\husttitlepage
+	
+	\begin{frame}{Outline}
+		\tableofcontents
+	\end{frame}
+	
+	\resetPageCount
+	\showPageNumber
+	
+	\useStyleHustFull
+	\useThinBar
+	
+	% ============================================================
+	\section{Motivation \& Task}
+	
+	\begin{frame}{Motivation}
+		\begin{itemize}
+			\item Emojis add affect, tone, and intent to short online messages.
+			\item Selecting emojis interrupts typing flow (open picker, search/scroll, choose).
+			\item Goal: predict likely emojis from the text being typed to enable fast suggestions.
+			\item Deployment constraint: low-latency, privacy-preserving, \textbf{client-side} inference.
+		\end{itemize}
+	\end{frame}
+	
+	\begin{frame}{Task \& evaluation}
+		\begin{itemize}
+			\item Single-label multi-class prediction over a fixed inventory of $C=43$ emojis.
+			\item We treat prediction as a \textbf{ranking} problem: suggest the top-$k$ candidates.
+			\item Metric: top-$k$ accuracy (Acc@$k$)
+		\end{itemize}
+		
+		\vspace{0.2cm}
+		\[
+		\mathrm{Acc@}k = \frac{1}{N}\sum_{i=1}^{N} \mathbb{I}\left[y_i \in \mathrm{Top}^k(x_i)\right].
+		\]
+		
+		\vspace{-0.1cm}
+		\small
+		Acc@1 matches ``single best suggestion''; Acc@5 matches a short emoji bar.
+	\end{frame}
+	
+	% ============================================================
+	\section{Dataset}
+	
+	\begin{frame}{Dataset construction}
+		\begin{itemize}
+			\item Scraped tweet-style posts with \texttt{snscrape} by querying per emoji.
+			\item English filtering with \texttt{pycld3}.
+			\item Cleaning:
+			\begin{itemize}
+				\item remove URLs, mentions, hashtags, and emojis (label purity),
+				\item lowercase and collapse repeated whitespace.
+			\end{itemize}
+		\end{itemize}
+		
+		\vspace{0.2cm}
+		\begin{block}{Split statistics}
+			\centering
+			\small
+			\begin{tabular}{lrrr}
+				\toprule
+				Split & Samples & \#Classes & Class count range \\
+				\midrule
+				Train & 751{,}885 & 43 & 16{,}718--17{,}846 \\
+				Test  & 83{,}543  & 43 & 1{,}858--1{,}983 \\
+				\bottomrule
+			\end{tabular}
+		\end{block}
+	\end{frame}
+	
+	\begin{frame}{Cleaned text samples}
+		\centering
+		\includegraphics[width=0.85\linewidth]{data_samples.png}
+	\end{frame}
+	
+	% ============================================================
+	\section{Models}
+
+	\begin{frame}{Benchmarked model families}
+		\begin{itemize}
+			\item \textbf{Sparse baselines:} TF--IDF (word 1--2 grams + char 3--5 grams) + Linear SVM / Logistic Regression / Naive Bayes.
+			\item \textbf{Lightweight neural:} FastText-style subword model, TextCNN, BiLSTM/BiGRU with attention.
+			\item \textbf{Transformer:} fine-tuned DistilBERT (\texttt{distilbert-base-uncased}).
+		\end{itemize}
+	\end{frame}
+
+	\begin{frame}{TF--IDF}
+		\centering
+		\[
+		\mathrm{tfidf}(t,d) = \mathrm{tf}(t,d)\cdot \log \frac{N}{\mathrm{df}(t)}.
+		\]
+		\vspace{0.1cm}
+		\begin{itemize}\itemsep2pt
+			\item $\mathrm{tf}(t,d)$: frequency of term $t$ in document $d$
+			\item $\mathrm{df}(t)$: \#documents containing $t$; $N$: total \#documents
+			\item IDF downweights common terms $\rightarrow$ highlights informative ones
+		\end{itemize}
+	\end{frame}
+
+	\begin{frame}{Linear SVM}
+		\centering
+		\includegraphics[height=0.85\textheight,keepaspectratio]{svm.png}
+	\end{frame}
+
+	\begin{frame}{Logistic Regression (Softmax)}
+		\centering
+		\small
+		\[
+		\mathbf{z}=\mathbf{W}\mathbf{x}+\mathbf{b},
+		\qquad
+		p(y=c\mid \mathbf{x})=\frac{\exp(z_c)}{\sum_{j=1}^{C}\exp(z_j)}.
+		\]
+		
+		\vspace{0.1cm}
+		\raggedright
+		\footnotesize
+		\begin{itemize}\itemsep2pt
+			\item $\mathbf{x}$: TF--IDF feature vector; $\mathbf{W},\mathbf{b}$: parameters
+			\item Train: minimize cross-entropy on labeled texts
+			\item Predict: $\hat{y}=\arg\max_c\, p(y=c\mid \mathbf{x})$ (use top-$k$ for suggestions)
+		\end{itemize}
+	\end{frame}
+
+	\begin{frame}{Multinomial Naive Bayes}
+		\centering
+		\small
+		\[
+		p(y=c\mid \mathbf{x}) \propto p(y=c)\prod_{j=1}^{V} p(w_j\mid c)^{x_j}
+		\]
+		\[
+		\hat{y}=\arg\max_{c}\left[\log p(y=c)+\sum_{j=1}^{V} x_j \log p(w_j\mid c)\right].
+		\]
+		
+		\vspace{0.1cm}
+		\raggedright
+		\footnotesize
+		\begin{itemize}\itemsep2pt
+			\item $\mathbf{x}$: bag-of-words/$n$-gram counts; assumes features are conditionally independent given class
+			\item Estimate $p(w\mid c)$ from counts (often Laplace smoothing)
+			\item Fast baseline for short, noisy text
+		\end{itemize}
+	\end{frame}
+
+	\begin{frame}{FastText-style Subword Model}
+		\centering
+		\small
+		\[
+		\mathbf{s}(x)=\frac{1}{|\mathcal{G}(x)|}\sum_{g\in \mathcal{G}(x)} \mathbf{z}_g,
+		\qquad
+		p(y\mid x)=\mathrm{softmax}(\mathbf{W}\mathbf{s}(x)+\mathbf{b}).
+		\]
+		\vspace{0.1cm}
+		\raggedright
+		\footnotesize
+		\begin{itemize}\itemsep2pt
+			\item $\mathcal{G}(x)$: word + character $n$-grams; $\mathbf{z}_g$: embedding of $n$-gram $g$
+			\item Text vector = average of (sub)word embeddings $\Rightarrow$ efficient and robust to misspellings
+			\item Linear softmax classifier on $\mathbf{s}(x)$ (trained with cross-entropy)
+		\end{itemize}
+	\end{frame}
+
+	\begin{frame}{TextCNN}
+		\centering
+		\includegraphics[width=\textwidth,keepaspectratio]{textcnn.png}
+		\animategraphics[autoplay,loop,width=0.3\linewidth]{2}{conv_frames/conv_}{000}{008}
+	\end{frame}
+
+	\begin{frame}{BiLSTM/BiGRU + Attention}
+		\centering
+		\includegraphics[height=0.85\textheight,keepaspectratio]{rnn.png}
+	\end{frame}
+
+	\begin{frame}{Fine-tuned DistilBERT}
+		\centering
+		\includegraphics[height=0.85\textheight,keepaspectratio]{bert.png}
+	\end{frame}
+	
+	% ============================================================
+	\section{Experiments \& Results}
+	
+	\begin{frame}{Experimental protocol (summary)}
+		\begin{itemize}
+			\item Hyperparameters tuned via a stratified 80/20 train/validation split (seed 42).
+			\item Classical baselines: scikit-learn pipelines (FeatureUnion TF--IDF + linear classifier).
+			\item Neural models: PyTorch + Adam; early stopping during tuning.
+			\item Transformer: AdamW + warmup/decay schedule; keep best validation epoch.
+		\end{itemize}
+	\end{frame}
+	
+	\begin{frame}{Test-set results (Acc@k)}
+		\centering
+		\begin{tabularx}{0.95\linewidth}{X r r r}
+			\toprule
+			Model & Acc@1 & Acc@3 & Acc@5 \\
+			\midrule
+			TF--IDF + SVM & 0.2109 & 0.3602 & 0.4460 \\
+			TF--IDF + LogReg & 0.2363 & 0.4170 & 0.5172 \\
+			TF--IDF + NB & 0.2234 & 0.4064 & 0.5112 \\
+			FastText & 0.2153 & 0.3996 & 0.5042 \\
+			TextCNN & 0.2094 & 0.3821 & 0.4864 \\
+			BiLSTM + Attn & 0.2254 & 0.4064 & 0.5101 \\
+			BiGRU + Attn & 0.2213 & 0.3983 & 0.5009 \\
+			\textbf{Transformer (DistilBERT)} & \textbf{0.2632} & \textbf{0.4596} & \textbf{0.5659} \\
+			\bottomrule
+		\end{tabularx}
+	\end{frame}
+	
+	% ============================================================
+	\section{Deployment}
+	
+	\begin{frame}{Deployment overview}
+		\begin{itemize}
+			\item Deploy the best checkpoint (DistilBERT) for interactive suggestions.
+			\item Export to ONNX and apply optional int8 quantization (smaller + faster).
+			\item Run fully client-side using Transformers.js + ONNX Runtime Web (WASM).
+			\item Benefits: low latency, works offline after caching, no server-side text logging.
+		\end{itemize}
+	\end{frame}
+	
+	\begin{frame}{Web app}
+		\centering
+		\includegraphics[height=0.8\textheight]{desktop.png}\\
+		\textbf{Demo:} \url{https://luongkhang04.github.io/emoji/}
+	\end{frame}
+	
+	\begin{frame}{Browser extension}
+		\centering
+		\includegraphics[height=0.8\textheight]{extension.png}\\
+		\textbf{Edge Add-ons:} \url{https://microsoftedge.microsoft.com/addons/detail/emoji-suggest/jdjoadakfkdcdllijajaepmplaodkkhj}
+	\end{frame}
+	
+	% ============================================================
+	\section{Conclusion}
+	
+	\begin{frame}{Conclusion \& future work}
+		\textbf{Takeaways}
+		\begin{itemize}
+			\item End-to-end pipeline: dataset $\rightarrow$ benchmarking $\rightarrow$ client-side deployment.
+			\item DistilBERT achieves the best test results: Acc@1 = 0.2632, Acc@5 = 0.5659.
+			\item Practical deployment via ONNX + quantization enables fast local inference in the browser.
+		\end{itemize}
+	\end{frame}	
+	\hustthankyou
+	
+\end{document}
